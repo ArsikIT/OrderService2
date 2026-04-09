@@ -3,16 +3,16 @@ package app
 import "os"
 
 type Config struct {
-	HTTPAddress    string
-	DatabaseURL    string
-	PaymentBaseURL string
+	HTTPAddress     string
+	DatabaseURL     string
+	PaymentGRPCAddr string
 }
 
 func LoadConfig() Config {
 	return Config{
-		HTTPAddress:    getEnv("HTTP_ADDRESS", ":8080"),
-		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:postgres@127.0.0.1:55433/order_service?sslmode=disable"),
-		PaymentBaseURL: getEnv("PAYMENT_BASE_URL", "http://localhost:8081"),
+		HTTPAddress:     getEnv("HTTP_ADDRESS", ":8080"),
+		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@127.0.0.1:55433/order_service?sslmode=disable"),
+		PaymentGRPCAddr: getEnv("PAYMENT_GRPC_ADDR", "127.0.0.1:50051"),
 	}
 }
 

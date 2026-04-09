@@ -1,60 +1,43 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
 
+	paymentv1 "github.com/ArsikIT/generated-proto-go/proto/payment/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"order-service/internal/domain"
 	"order-service/internal/usecase"
 )
 
-type PaymentHTTPClient struct {
-	baseURL string
-	client  *http.Client
+type PaymentGRPCClient struct {
+	client paymentv1.PaymentServiceClient
 }
 
-func NewPaymentHTTPClient(baseURL string, client *http.Client) *PaymentHTTPClient {
-	return &PaymentHTTPClient{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  client,
-	}
+func NewPaymentGRPCClient(client paymentv1.PaymentServiceClient) *PaymentGRPCClient {
+	return &PaymentGRPCClient{client: client}
 }
 
-func (c *PaymentHTTPClient) Authorize(ctx context.Context, req usecase.AuthorizePaymentRequest) (*usecase.AuthorizePaymentResponse, error) {
-	payload, err := json.Marshal(req)
+func (c *PaymentGRPCClient) Authorize(ctx context.Context, req usecase.AuthorizePaymentRequest) (*usecase.AuthorizePaymentResponse, error) {
+	resp, err := c.client.ProcessPayment(ctx, &paymentv1.ProcessPaymentRequest{
+		OrderId: req.OrderID,
+		Amount:  req.Amount,
+	})
 	if err != nil {
-		return nil, err
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.InvalidArgument:
+				return nil, err
+			default:
+				return nil, domain.ErrPaymentUnavailable
+			}
+		}
+		return nil, domain.ErrPaymentUnavailable
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/payments", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusInternalServerError {
-		return nil, fmt.Errorf("payment service error: %s", resp.Status)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var paymentResp usecase.AuthorizePaymentResponse
-	if err := json.Unmarshal(body, &paymentResp); err != nil {
-		return nil, err
-	}
-
-	return &paymentResp, nil
+	return &usecase.AuthorizePaymentResponse{
+		TransactionID: resp.GetTransactionId(),
+		Status:        resp.GetStatus(),
+	}, nil
 }
