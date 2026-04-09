@@ -24,14 +24,16 @@ type CreateOrderOutput struct {
 }
 
 type OrderUseCase struct {
-	repo          OrderRepository
-	paymentClient PaymentClient
+	repo             OrderRepository
+	paymentClient    PaymentClient
+	updatesPublisher OrderUpdatesPublisher
 }
 
-func NewOrderUseCase(repo OrderRepository, paymentClient PaymentClient) *OrderUseCase {
+func NewOrderUseCase(repo OrderRepository, paymentClient PaymentClient, updatesPublisher OrderUpdatesPublisher) *OrderUseCase {
 	return &OrderUseCase{
-		repo:          repo,
-		paymentClient: paymentClient,
+		repo:             repo,
+		paymentClient:    paymentClient,
+		updatesPublisher: updatesPublisher,
 	}
 }
 
@@ -68,6 +70,7 @@ func (uc *OrderUseCase) CreateOrder(ctx context.Context, input CreateOrderInput)
 	if err := uc.repo.Create(ctx, order); err != nil {
 		return nil, err
 	}
+	uc.publishOrderUpdate(order)
 
 	paymentResp, err := uc.paymentClient.Authorize(ctx, AuthorizePaymentRequest{
 		OrderID: order.ID,
@@ -88,6 +91,7 @@ func (uc *OrderUseCase) CreateOrder(ctx context.Context, input CreateOrderInput)
 	if err := uc.repo.UpdateStatus(ctx, order.ID, order.Status); err != nil {
 		return nil, err
 	}
+	uc.publishOrderUpdate(order)
 
 	return &CreateOrderOutput{Order: order, Created: true}, nil
 }
@@ -111,5 +115,15 @@ func (uc *OrderUseCase) CancelOrder(ctx context.Context, id string) (*domain.Ord
 	}
 
 	order.Status = domain.OrderStatusCancelled
+	uc.publishOrderUpdate(order)
 	return order, nil
+}
+
+func (uc *OrderUseCase) publishOrderUpdate(order *domain.Order) {
+	if uc.updatesPublisher == nil || order == nil {
+		return
+	}
+
+	orderCopy := *order
+	uc.updatesPublisher.Publish(&orderCopy)
 }
