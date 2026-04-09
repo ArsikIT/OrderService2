@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	orderv1 "github.com/ArsikIT/generated-proto-go/proto/order/v1"
 	paymentv1 "github.com/ArsikIT/generated-proto-go/proto/payment/v1"
 	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
@@ -17,6 +19,7 @@ import (
 
 	"order-service/internal/app"
 	"order-service/internal/repository/postgres"
+	grpctransport "order-service/internal/transport/grpc"
 	httptransport "order-service/internal/transport/http"
 	"order-service/internal/usecase"
 )
@@ -48,11 +51,22 @@ func main() {
 	defer grpcConn.Close()
 
 	orderRepo := postgres.NewOrderRepository(db)
+	orderUpdatesBroker := app.NewOrderUpdatesBroker()
 	paymentClient := app.NewPaymentGRPCClient(paymentv1.NewPaymentServiceClient(grpcConn))
 
-	orderUseCase := usecase.NewOrderUseCase(orderRepo, paymentClient)
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, paymentClient, orderUpdatesBroker)
 	handler := httptransport.NewHandler(orderUseCase)
 	router := httptransport.NewRouter(handler)
+	orderGRPCHandler := grpctransport.NewHandler(orderUseCase, orderUpdatesBroker)
+
+	grpcServer := grpc.NewServer()
+	orderv1.RegisterOrderServiceServer(grpcServer, orderGRPCHandler)
+
+	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
+	if err != nil {
+		log.Fatalf("listen grpc: %v", err)
+	}
+	defer grpcListener.Close()
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
@@ -67,6 +81,13 @@ func main() {
 		}
 	}()
 
+	go func() {
+		log.Printf("order-service grpc listening on %s", cfg.GRPCAddress)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			log.Fatalf("grpc serve: %v", err)
+		}
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
@@ -77,4 +98,6 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+
+	grpcServer.GracefulStop()
 }

@@ -17,6 +17,10 @@ type PaymentClient interface {
 	Authorize(ctx context.Context, req AuthorizePaymentRequest) (*AuthorizePaymentResponse, error)
 }
 
+type OrderUpdatesPublisher interface {
+	Publish(order *domain.Order)
+}
+
 type AuthorizePaymentRequest struct {
 	OrderID string `json:"order_id"`
 	Amount  int64  `json:"amount"`
