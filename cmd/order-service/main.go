@@ -10,7 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	paymentv1 "github.com/ArsikIT/generated-proto-go/proto/payment/v1"
 	_ "github.com/lib/pq"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"order-service/internal/app"
 	"order-service/internal/repository/postgres"
@@ -35,11 +38,17 @@ func main() {
 		log.Fatalf("ping database: %v", err)
 	}
 
-	orderRepo := postgres.NewOrderRepository(db)
-	paymentClient := app.NewPaymentHTTPClient(
-		cfg.PaymentBaseURL,
-		&http.Client{Timeout: 2 * time.Second},
+	grpcConn, err := grpc.NewClient(
+		cfg.PaymentGRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
+	if err != nil {
+		log.Fatalf("connect payment grpc: %v", err)
+	}
+	defer grpcConn.Close()
+
+	orderRepo := postgres.NewOrderRepository(db)
+	paymentClient := app.NewPaymentGRPCClient(paymentv1.NewPaymentServiceClient(grpcConn))
 
 	orderUseCase := usecase.NewOrderUseCase(orderRepo, paymentClient)
 	handler := httptransport.NewHandler(orderUseCase)
