@@ -141,17 +141,13 @@ docker exec -it order-db psql -U postgres -d order_service -c "UPDATE orders SET
 
 ## Architecture Diagram
 
-```mermaid
-flowchart LR
-    Client --> OrderHTTP[Order Service HTTP API]
-    Client --> OrderStreamClient[gRPC Stream Client]
-    OrderHTTP --> OrderUC[Order Use Case]
-    OrderUC --> OrderRepo[(Order Service DB)]
-    OrderUC --> PaymentPort[Payment gRPC Client]
-    PaymentPort --> PaymentGRPC[Payment Service gRPC]
-    OrderStreamClient --> OrderGRPC[Order Service gRPC Stream]
-    OrderGRPC --> OrderUC
-    OrderRepo --> OrderGRPC
+```
+REST
 ```
 
 ![img.png](img.png)
+
+```
+gRPC
+```
+![grpc3.png](grpc3.png)
